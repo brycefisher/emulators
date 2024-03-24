@@ -165,6 +165,11 @@ func (g *GcsEmu) Handler(w http.ResponseWriter, r *http.Request) {
 			// unsupported method, or maybe should never happen
 			g.gapiError(w, http.StatusBadRequest, fmt.Sprintf("unsupported POST request: %v\n%s", r.URL, maybeNotImplementedErrorMsg))
 		}
+	case "PUT":
+		// handle createObject case
+		g.handleGcsOverwriteObject(ctx, baseUrl, w, r, bucket, object, conds)
+
+		// handle extendObject case
 	default:
 		g.gapiError(w, http.StatusMethodNotAllowed, "")
 	}
@@ -471,6 +476,37 @@ func (g *GcsEmu) handleGcsNewBucket(ctx context.Context, w http.ResponseWriter, 
 	}
 
 	g.jsonRespond(w, bucket)
+}
+
+func (g *GcsEmu) handleGcsOverwriteObject(ctx context.Context, baseUrl HttpBaseUrl, w http.ResponseWriter, r *http.Request, bucket string, object string, conds cloudstorage.Conditions) {
+	if object == "" {
+		g.gapiError(w, http.StatusBadRequest, "missing object name")
+		return
+	}
+
+	contents, err := io.ReadAll(r.Body)
+	if err != nil {
+		g.gapiError(w, http.StatusBadRequest, "failed to read body")
+		return
+	}
+
+	obj := &storage.Object{
+		Bucket:      bucket,
+		ContentType: r.Header.Get("Content-Type"),
+		Name:        object,
+		Size:        uint64(len(contents)),
+	}
+
+	if r.Header.Get("x-goog-if-generation-match") != "" {
+		conds.DoesNotExist = true
+	}
+	meta, err := g.finishUpload(ctx, baseUrl, obj, contents, bucket, conds)
+	if err != nil {
+		g.gapiError(w, httpStatusCodeOf(err), err.Error())
+		return
+	}
+
+	w.Header().Set("x-goog-generation", strconv.FormatInt(meta.Generation, 10))
 }
 
 func (g *GcsEmu) handleGcsNewObject(ctx context.Context, baseUrl HttpBaseUrl, w http.ResponseWriter, r *http.Request, bucket string, conds cloudstorage.Conditions) {
