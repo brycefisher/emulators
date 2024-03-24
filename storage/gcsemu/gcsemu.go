@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	cloudstorage "cloud.google.com/go/storage"
 	"github.com/bluele/gcache"
@@ -487,8 +488,15 @@ func (g *GcsEmu) handleGcsInspectObject(ctx context.Context, baseUrl HttpBaseUrl
 		g.gapiError(w, http.StatusNotFound, fmt.Sprintf("%s/%s not found", bucket, filename))
 		return
 	}
-	fmt.Println(obj.Metadata)
-	w.Header().Set("Last-Modified", obj.Updated)
+	updated, err := time.Parse(time.RFC3339, obj.Updated)
+	if err != nil {
+		g.gapiError(w, http.StatusInternalServerError, fmt.Sprintf("failed to parse Last-Modified for %s/%s: %s", bucket, filename, err))
+		return
+	}
+	w.Header().Set("Last-Modified", updated.Format(http.TimeFormat))
+	for name, value := range obj.Metadata {
+		w.Header().Set(name, value)
+	}
 }
 
 func (g *GcsEmu) handleGcsOverwriteObject(ctx context.Context, baseUrl HttpBaseUrl, w http.ResponseWriter, r *http.Request, bucket string, object string, conds cloudstorage.Conditions) {
@@ -508,6 +516,13 @@ func (g *GcsEmu) handleGcsOverwriteObject(ctx context.Context, baseUrl HttpBaseU
 		ContentType: r.Header.Get("Content-Type"),
 		Name:        object,
 		Size:        uint64(len(contents)),
+	}
+
+	obj.Metadata = make(map[string]string)
+	for name, values := range r.Header {
+		if strings.HasPrefix(name, "X-Goog-Meta-") {
+			obj.Metadata[name] = values[0]
+		}
 	}
 
 	if r.Header.Get("x-goog-if-generation-match") != "" {
