@@ -494,6 +494,7 @@ func (g *GcsEmu) handleGcsInspectObject(ctx context.Context, baseUrl HttpBaseUrl
 		return
 	}
 	w.Header().Set("Last-Modified", updated.Format(http.TimeFormat))
+	w.Header().Set("x-goog-generation", strconv.FormatInt(obj.Generation, 10))
 	for name, value := range obj.Metadata {
 		w.Header().Set(name, value)
 	}
