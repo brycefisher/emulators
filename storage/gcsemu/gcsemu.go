@@ -526,9 +526,14 @@ func (g *GcsEmu) handleGcsOverwriteObject(ctx context.Context, baseUrl HttpBaseU
 		}
 	}
 
-	if r.Header.Get("x-goog-if-generation-match") != "" {
-		conds.DoesNotExist = true
+	generationMatch := r.Header.Get("x-goog-if-generation-match")
+	if generationMatch != "" {
+		gen, err := strconv.ParseInt(generationMatch, 10, 64)
+		if err == nil {
+			conds.GenerationMatch = gen
+		}
 	}
+
 	meta, err := g.finishUpload(ctx, baseUrl, obj, contents, bucket, conds)
 	if err != nil {
 		g.gapiError(w, httpStatusCodeOf(err), err.Error())
