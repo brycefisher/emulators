@@ -166,10 +166,9 @@ func (g *GcsEmu) Handler(w http.ResponseWriter, r *http.Request) {
 			g.gapiError(w, http.StatusBadRequest, fmt.Sprintf("unsupported POST request: %v\n%s", r.URL, maybeNotImplementedErrorMsg))
 		}
 	case "PUT":
-		// handle createObject case
 		g.handleGcsOverwriteObject(ctx, baseUrl, w, r, bucket, object, conds)
-
-		// handle extendObject case
+	case "HEAD":
+		g.handleGcsInspectObject(ctx, baseUrl, w, r, bucket, object, conds)
 	default:
 		g.gapiError(w, http.StatusMethodNotAllowed, "")
 	}
@@ -476,6 +475,20 @@ func (g *GcsEmu) handleGcsNewBucket(ctx context.Context, w http.ResponseWriter, 
 	}
 
 	g.jsonRespond(w, bucket)
+}
+
+func (g *GcsEmu) handleGcsInspectObject(ctx context.Context, baseUrl HttpBaseUrl, w http.ResponseWriter, r *http.Request, bucket string, filename string, conds cloudstorage.Conditions) {
+	obj, err := g.store.GetMeta(baseUrl, bucket, filename)
+	if err != nil {
+		g.gapiError(w, http.StatusInternalServerError, fmt.Sprintf("failed to get meta for %s/%s: %s", bucket, filename, err))
+		return
+	}
+	if obj == nil {
+		g.gapiError(w, http.StatusNotFound, fmt.Sprintf("%s/%s not found", bucket, filename))
+		return
+	}
+	fmt.Println(obj.Metadata)
+	w.Header().Set("Last-Modified", obj.Updated)
 }
 
 func (g *GcsEmu) handleGcsOverwriteObject(ctx context.Context, baseUrl HttpBaseUrl, w http.ResponseWriter, r *http.Request, bucket string, object string, conds cloudstorage.Conditions) {
